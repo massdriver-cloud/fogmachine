@@ -1,0 +1,7 @@
+{
+  "BucketName": "md-test-cf-1234",
+  "DevBucketName": "md-test-dev-cf-1234",
+  "connections": {
+    "auth": "test"
+  }
+}
