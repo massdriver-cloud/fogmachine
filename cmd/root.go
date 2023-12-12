@@ -33,7 +33,7 @@ func Execute() {
 	cmd := NewCmdFogMachine()
 	err := cmd.Execute()
 	if err != nil {
-		os.Exit(1)
+		log.Fatal().Err(err)
 	}
 }
 

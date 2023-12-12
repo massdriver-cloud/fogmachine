@@ -15,13 +15,11 @@ func TestParseConfig(t *testing.T) {
 	}
 
 	got, err := template.Read(input)
-
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	wantTemplate, err := os.ReadFile("testdata/s3.yaml")
-
 	if err != nil {
 		t.Fatal(err)
 	}

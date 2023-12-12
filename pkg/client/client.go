@@ -29,9 +29,7 @@ type ChangesetExecutor interface {
 }
 
 func NewCloudformationClient(packageName string, region string, ctx context.Context) (*Client, error) {
-
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
-
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +52,10 @@ func (c *Client) CreateChangeset(template []byte, parameters []types.Parameter, 
 
 	if c.stackExists(ctx) {
 		input.ChangeSetType = types.ChangeSetTypeUpdate
-		c.primeEventCache()
+		err := c.primeEventCache()
+		if err != nil {
+			log.Fatal().Err(err)
+		}
 	} else {
 		input.ChangeSetType = types.ChangeSetTypeCreate
 	}
@@ -62,20 +63,13 @@ func (c *Client) CreateChangeset(template []byte, parameters []types.Parameter, 
 	log.Info().Str("phase", "Changeset").Msg("Creating changeset")
 
 	response, err := c.client.CreateChangeSet(ctx, input)
-
 	if err != nil {
 		return err
 	}
 
 	c.changesetId = response.Id
 
-	err = c.changeSetStatusWatcher(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return c.changeSetStatusWatcher(ctx)
 }
 
 func (c *Client) primeEventCache() error {
@@ -84,7 +78,6 @@ func (c *Client) primeEventCache() error {
 	}
 
 	result, err := c.client.DescribeStackEvents(context.Background(), params)
-
 	if err != nil {
 		log.Fatal().Err(err)
 	}
@@ -102,13 +95,11 @@ TODO:
 */
 
 func (c Client) stackExists(ctx context.Context) bool {
-
 	params := cloudformation.DescribeStacksInput{
 		StackName: aws.String(c.stackId),
 	}
 
 	response, err := c.client.DescribeStacks(ctx, &params)
-
 	if err != nil {
 		return false
 	}
@@ -133,7 +124,6 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 
 	for retry {
 		result, err := c.client.DescribeChangeSet(ctx, params)
-
 		if err != nil {
 			return err
 		}
@@ -182,7 +172,6 @@ func (c Client) ExecuteChangeSet(ctx context.Context) error {
 	}
 
 	_, err := c.client.ExecuteChangeSet(ctx, input)
-
 	if err != nil {
 		return err
 	}
@@ -214,7 +203,6 @@ func (c Client) stackStatusWatcher(channel chan eventcache.Event) error {
 		}
 
 		result, err := c.client.DescribeStacks(context.Background(), params)
-
 		if err != nil {
 			close(channel)
 			return err
@@ -229,7 +217,6 @@ func (c Client) stackStatusWatcher(channel chan eventcache.Event) error {
 				Type:           "Deployment",
 			}
 
-			retry = false
 			close(channel)
 			return nil
 		}
@@ -249,7 +236,6 @@ func (c *Client) changeSetExecutionStatusWatcher(channel chan eventcache.Event) 
 		}
 
 		result, err := c.client.DescribeStackEvents(context.Background(), params)
-
 		if err != nil {
 			return err
 		}

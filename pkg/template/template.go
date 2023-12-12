@@ -21,7 +21,6 @@ type Output struct {
 
 func Read(input Input) (*Output, error) {
 	template, err := os.ReadFile(input.TemplatePath)
-
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +30,6 @@ func Read(input Input) (*Output, error) {
 	}
 
 	params, err := readParameters(input.ParameterPath)
-
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +46,12 @@ func readTemplate(filePath string) ([]byte, error) {
 func readParameters(filePath string) ([]types.Parameter, error) {
 	parameters := []types.Parameter{}
 	rawParameters, err := os.ReadFile(filePath)
-	rawJson := make(map[string]interface{})
-	err = json.Unmarshal([]byte(rawParameters), &rawJson)
+	if err != nil {
+		return parameters, err
+	}
 
+	rawJson := make(map[string]interface{})
+	err = json.Unmarshal(rawParameters, &rawJson)
 	if err != nil {
 		return parameters, err
 	}
