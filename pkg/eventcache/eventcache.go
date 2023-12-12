@@ -32,7 +32,6 @@ func (eventCache *EventCache) Prime(client *cloudformation.Client, stackName str
 	}
 
 	result, err := client.DescribeStackEvents(context.Background(), params)
-
 	if err != nil {
 		return err
 	}
