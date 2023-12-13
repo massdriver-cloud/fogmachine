@@ -21,6 +21,8 @@ func ApplyCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("template-path")
 	cmd.Flags().StringP("parameter-path", "", "", "Path to CloudFormation input vars")
 	_ = cmd.MarkFlagRequired("parameter-path")
+	cmd.Flags().Int("timeout", 600, "time in seconds to wait for resources to finish, this does not cancel the cloud formation run")
+	cmd.Flags().Int("poll-interval", 3, "time in seconds between each poll of the AWS api for updates")
 
 	return cmd
 }

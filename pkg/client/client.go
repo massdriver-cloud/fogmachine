@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,13 +12,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/massdriver-cloud/fogmachine/pkg/eventcache"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 )
 
 type Client struct {
-	client      *cloudformation.Client
-	eventCache  *eventcache.EventCache
-	stackId     string
-	changesetId *string
+	client       *cloudformation.Client
+	eventCache   *eventcache.EventCache
+	stackId      string
+	changesetId  *string
+	pollIntervel time.Duration
+	timeout      time.Duration
 }
 
 type ChangesetCreator interface {
@@ -28,16 +32,18 @@ type ChangesetExecutor interface {
 	ExecuteChangeset(ctx context.Context) error
 }
 
-func NewCloudformationClient(packageName string, region string, ctx context.Context) (*Client, error) {
+func NewCloudformationClient(ctx context.Context, packageName string, region string, t, pollInterval int) (*Client, error) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{
-		client:     cloudformation.NewFromConfig(cfg),
-		eventCache: eventcache.New(),
-		stackId:    packageName,
+		client:       cloudformation.NewFromConfig(cfg),
+		eventCache:   eventcache.New(),
+		stackId:      packageName,
+		pollIntervel: time.Duration(pollInterval) * time.Second,
+		timeout:      time.Duration(t) * time.Second,
 	}, nil
 }
 
@@ -54,7 +60,7 @@ func (c *Client) CreateChangeset(template []byte, parameters []types.Parameter, 
 		input.ChangeSetType = types.ChangeSetTypeUpdate
 		err := c.primeEventCache()
 		if err != nil {
-			log.Fatal().Err(err)
+			log.Fatal().Err(err).Msg("")
 		}
 	} else {
 		input.ChangeSetType = types.ChangeSetTypeCreate
@@ -79,7 +85,7 @@ func (c *Client) primeEventCache() error {
 
 	result, err := c.client.DescribeStackEvents(context.Background(), params)
 	if err != nil {
-		log.Fatal().Err(err)
+		return err
 	}
 
 	for _, event := range result.StackEvents {
@@ -119,10 +125,10 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 		StackName:     aws.String(c.stackId),
 	}
 
-	retry := true
-	prevStatus := ""
+	start := time.Now()
+	var prevStatus string
 
-	for retry {
+	for {
 		result, err := c.client.DescribeChangeSet(ctx, params)
 		if err != nil {
 			return err
@@ -131,6 +137,7 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 		status := string(result.Status)
 
 		if prevStatus == status {
+			time.Sleep(c.pollIntervel)
 			continue
 		}
 
@@ -158,7 +165,12 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 			Msg("")
 
 		prevStatus = status
-		time.Sleep(3 * time.Second)
+
+		if time.Since(start) > c.timeout {
+			break
+		}
+
+		time.Sleep(c.pollIntervel)
 	}
 
 	return fmt.Errorf("Changeset failed to reach a terminal state")
@@ -176,61 +188,72 @@ func (c Client) ExecuteChangeSet(ctx context.Context) error {
 		return err
 	}
 
-	var channel chan eventcache.Event = make(chan eventcache.Event)
+	ctx, cancel := context.WithTimeoutCause(ctx, c.timeout, errors.New("reached timout"))
 
-	go c.stackStatusWatcher(channel)
-	go c.changeSetExecutionStatusWatcher(channel)
+	var errGroup errgroup.Group
 
-	for msg := range channel {
-		log.Info().
-			Str("phase", "Execution").
-			Str("event_type", msg.Type).
-			Str("provisioner_resource_id", msg.ResourceName).
-			Str("provider_resource_id", msg.ProviderResourceId).
-			Str("status", msg.ResourceStatus).
-			Msg("")
+	errGroup.Go(func() error { return c.stackStatusWatcher(ctx, cancel) })
+	errGroup.Go(func() error { return c.changeSetExecutionStatusWatcher(ctx, cancel) })
+
+	if err := errGroup.Wait(); err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
+	if ctx.Err() != nil {
+		// We don't care if the context was canceled since that's how we signal the go routines
+		// so only log if the deadline was exceeded
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Info().Msg("Reached timeout deadline waiting for stack to complete")
+		}
 	}
 
 	return nil
 }
 
-func (c Client) stackStatusWatcher(channel chan eventcache.Event) error {
-	retry := true
+func (c Client) stackStatusWatcher(ctx context.Context, cancel context.CancelFunc) error {
+	defer cancel()
 
-	for retry {
+	for {
 		params := &cloudformation.DescribeStacksInput{
 			StackName: aws.String(c.stackId),
 		}
 
 		result, err := c.client.DescribeStacks(context.Background(), params)
 		if err != nil {
-			close(channel)
 			return err
 		}
 
 		stack := result.Stacks[0]
 
 		if isTerminalStatus(string(stack.StackStatus)) {
-			channel <- eventcache.Event{
-				ResourceName:   c.stackId,
-				ResourceStatus: string(stack.StackStatus),
-				Type:           "Deployment",
-			}
+			log.Info().
+				Str("phase", "Execution").
+				Str("event_type", "Deployment").
+				Str("provisioner_resource_id", c.stackId).
+				Str("provider_resource_id", "").
+				Str("status", string(stack.StackStatus)).
+				Msg("")
 
-			close(channel)
 			return nil
 		}
 
-		time.Sleep(5 * time.Second)
-	}
+		// Sleep before the context check so if it was canceled we exit without trying the API again
+		time.Sleep(c.pollIntervel)
 
-	return nil
+		select {
+		case <-ctx.Done():
+			log.Debug().Str("phase", "Execution").Str("func", "stack").Msg("ctx canceled")
+			return nil
+		default:
+			log.Debug().Str("phase", "Execution").Msg("stack Going to poll again")
+		}
+	}
 }
 
-func (c *Client) changeSetExecutionStatusWatcher(channel chan eventcache.Event) error {
-	retry := true
+func (c *Client) changeSetExecutionStatusWatcher(ctx context.Context, cancel context.CancelFunc) error {
+	defer cancel()
 
-	for retry {
+	for {
 		params := &cloudformation.DescribeStackEventsInput{
 			StackName: aws.String(c.stackId),
 		}
@@ -246,14 +269,28 @@ func (c *Client) changeSetExecutionStatusWatcher(channel chan eventcache.Event) 
 			if !c.eventCache.EventExists(*event.EventId) {
 				e := c.eventCache.EventFromStack(event, "Resource")
 				c.eventCache.AddEvent(*event.EventId, e)
-				channel <- e
+				log.Info().
+					Str("phase", "Execution").
+					Str("event_type", e.Type).
+					Str("provisioner_resource_id", e.ResourceName).
+					Str("provider_resource_id", e.ProviderResourceId).
+					Str("status", string(e.ResourceStatus)).
+					Msg("")
 			}
 		}
 
-		time.Sleep(3 * time.Second)
-	}
+		// Sleep before the context check so if it was canceled we exit without trying the API again
+		// This also stops any logs coming out if the stack status log already happened
+		time.Sleep(c.pollIntervel)
 
-	return nil
+		select {
+		case <-ctx.Done():
+			log.Debug().Str("phase", "Execution").Str("func", "changeSet").Msg("ctx canceled")
+			return nil
+		default:
+			log.Debug().Str("phase", "Execution").Msg("changeSet Going to poll again")
+		}
+	}
 }
 
 func isTerminalStatus(status string) bool {
