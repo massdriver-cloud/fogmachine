@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.34.5
 	github.com/rs/zerolog v1.30.0
 	github.com/spf13/cobra v1.7.0
+	golang.org/x/sync v0.5.0
 )
 
 require (

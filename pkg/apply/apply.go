@@ -10,31 +10,40 @@ import (
 )
 
 func CfApply(cmd *cobra.Command, args []string) {
-
 	ctx := context.Background()
 	packageName, err := cmd.Flags().GetString("package-name")
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 
 	region, err := cmd.Flags().GetString("region")
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 
-	client, err := client.NewCloudformationClient(packageName, region, ctx)
+	timeout, err := cmd.Flags().GetInt("timeout")
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
+	}
+
+	pollInterval, err := cmd.Flags().GetInt("poll-interval")
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
+	client, err := client.NewCloudformationClient(ctx, packageName, region, timeout, pollInterval)
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
 	}
 
 	templatePath, err := cmd.Flags().GetString("template-path")
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 
 	parameterPath, err := cmd.Flags().GetString("parameter-path")
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 
 	template, err := template.Read(template.Input{
@@ -42,21 +51,21 @@ func CfApply(cmd *cobra.Command, args []string) {
 		ParameterPath: parameterPath,
 	})
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 		return
 	}
 
 	err = client.CreateChangeset(template.Template, template.Parameters, ctx)
 
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 		return
 	}
 
 	err = client.ExecuteChangeSet(ctx)
 
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 		return
 	}
 }
