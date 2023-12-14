@@ -1,15 +1,14 @@
-package apply
+package destroy
 
 import (
 	"context"
 
 	"github.com/massdriver-cloud/fogmachine/pkg/client"
-	"github.com/massdriver-cloud/fogmachine/pkg/template"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
-func CfApply(cmd *cobra.Command, args []string) {
+func Destroy(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	packageName, err := cmd.Flags().GetString("package-name")
 	if err != nil {
@@ -36,29 +35,7 @@ func CfApply(cmd *cobra.Command, args []string) {
 		log.Fatal().Err(err).Msg("")
 	}
 
-	templatePath, err := cmd.Flags().GetString("template-path")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	parameterPath, err := cmd.Flags().GetString("parameter-path")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	template, err := template.Read(template.Input{
-		TemplatePath:  templatePath,
-		ParameterPath: parameterPath,
-	})
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	if err := client.CreateChangeset(template.Template, template.Parameters, ctx); err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	if err := client.ExecuteChangeSet(ctx); err != nil {
+	if err := client.ExecuteDestroyStack(ctx); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
 }

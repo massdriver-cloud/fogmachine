@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -50,20 +51,24 @@ func NewCloudformationClient(ctx context.Context, packageName string, region str
 func (c *Client) CreateChangeset(template []byte, parameters []types.Parameter, ctx context.Context) error {
 	input := &cloudformation.CreateChangeSetInput{
 		ChangeSetName: aws.String(fmt.Sprintf("%s-%d", c.stackId, time.Now().Unix())),
+		ChangeSetType: types.ChangeSetTypeCreate,
 		StackName:     aws.String(c.stackId),
 		Description:   aws.String("Changeset created via Fog-Machine"),
 		TemplateBody:  aws.String(string(template)),
 		Parameters:    parameters,
 	}
 
-	if c.stackExists(ctx) {
+	ok, err := c.stackExists(ctx)
+	if err != nil {
+		return err
+	}
+
+	if ok {
 		input.ChangeSetType = types.ChangeSetTypeUpdate
-		err := c.primeEventCache()
+		err = c.primeEventCache()
 		if err != nil {
-			log.Fatal().Err(err).Msg("")
+			return err
 		}
-	} else {
-		input.ChangeSetType = types.ChangeSetTypeCreate
 	}
 
 	log.Info().Str("phase", "Changeset").Msg("Creating changeset")
@@ -95,28 +100,26 @@ func (c *Client) primeEventCache() error {
 	return nil
 }
 
-/*
-TODO:
-- parse stack doesnt exist errors.
-*/
-
-func (c Client) stackExists(ctx context.Context) bool {
+func (c Client) stackExists(ctx context.Context) (bool, error) {
 	params := cloudformation.DescribeStacksInput{
 		StackName: aws.String(c.stackId),
 	}
 
 	response, err := c.client.DescribeStacks(ctx, &params)
 	if err != nil {
-		return false
+		if !errorIsDoesNotExist(err) {
+			return false, err
+		}
+		return false, nil
 	}
 
 	if len(response.Stacks) != 1 {
-		return false
+		return false, nil
 	}
 
 	inReview := response.Stacks[0].StackStatus != "REVIEW_IN_PROGRESS"
 
-	return inReview
+	return inReview, nil
 }
 
 func (c Client) changeSetStatusWatcher(ctx context.Context) error {
@@ -142,10 +145,10 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 		}
 
 		if isTerminalStatus(status) {
-			message := ""
+			var message string
 
 			if result.StatusReason != nil {
-				message = string(*result.StatusReason)
+				message = *result.StatusReason
 			}
 
 			log.Info().
@@ -177,17 +180,77 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 }
 
 func (c Client) ExecuteChangeSet(ctx context.Context) error {
+	log.Info().Str("phase", "Execution").Msg("Validating changeset")
+	params := &cloudformation.DescribeChangeSetInput{
+		ChangeSetName: c.changesetId,
+		StackName:     aws.String(c.stackId),
+	}
+
+	result, err := c.client.DescribeChangeSet(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	if len(result.Changes) == 0 {
+		log.Info().Str("phase", "Execution").Msg("No changes in changeset")
+		return nil
+	}
+
 	log.Info().Str("phase", "Execution").Msg("Executing changeset")
+
 	input := &cloudformation.ExecuteChangeSetInput{
 		StackName:     aws.String(c.stackId),
 		ChangeSetName: c.changesetId,
 	}
 
-	_, err := c.client.ExecuteChangeSet(ctx, input)
+	_, err = c.client.ExecuteChangeSet(ctx, input)
 	if err != nil {
 		return err
 	}
 
+	return c.runWatchers(ctx)
+}
+
+func (c Client) ExecuteDestroyStack(ctx context.Context) error {
+	log.Info().Str("phase", "Execution").Msg("Verifying stack exists")
+
+	if ok, err := c.stackExists(ctx); err != nil {
+		return err
+	} else if !ok {
+		log.Info().Str("phase", "Execution").Msg("Stack does not exist, nothing to destroy")
+		return nil
+	}
+
+	log.Debug().Str("phase", "Execution").Msg("Priming cache")
+
+	err := c.primeEventCache()
+	if err != nil {
+		return err
+	}
+
+	log.Info().Str("phase", "Execution").Msg("Destroying stack")
+
+	input := &cloudformation.DeleteStackInput{
+		StackName: aws.String(c.stackId),
+	}
+
+	_, err = c.client.DeleteStack(ctx, input)
+	if err != nil {
+		return err
+	}
+
+	if err := c.runWatchers(ctx); err != nil {
+		// On destroy we will hit this error so we know the stack is gone, anything else should return
+		if !errorIsDoesNotExist(err) {
+			return err
+		}
+		log.Info().Str("phase", "Execution").Msg("Stack destroyed successfully")
+	}
+
+	return nil
+}
+
+func (c Client) runWatchers(ctx context.Context) error {
 	ctx, cancel := context.WithTimeoutCause(ctx, c.timeout, errors.New("reached timout"))
 
 	var errGroup errgroup.Group
@@ -196,7 +259,7 @@ func (c Client) ExecuteChangeSet(ctx context.Context) error {
 	errGroup.Go(func() error { return c.changeSetExecutionStatusWatcher(ctx, cancel) })
 
 	if err := errGroup.Wait(); err != nil {
-		log.Fatal().Err(err).Msg("")
+		return err
 	}
 
 	if ctx.Err() != nil {
@@ -213,11 +276,11 @@ func (c Client) ExecuteChangeSet(ctx context.Context) error {
 func (c Client) stackStatusWatcher(ctx context.Context, cancel context.CancelFunc) error {
 	defer cancel()
 
-	for {
-		params := &cloudformation.DescribeStacksInput{
-			StackName: aws.String(c.stackId),
-		}
+	params := &cloudformation.DescribeStacksInput{
+		StackName: aws.String(c.stackId),
+	}
 
+	for {
 		result, err := c.client.DescribeStacks(context.Background(), params)
 		if err != nil {
 			return err
@@ -253,11 +316,11 @@ func (c Client) stackStatusWatcher(ctx context.Context, cancel context.CancelFun
 func (c *Client) changeSetExecutionStatusWatcher(ctx context.Context, cancel context.CancelFunc) error {
 	defer cancel()
 
-	for {
-		params := &cloudformation.DescribeStackEventsInput{
-			StackName: aws.String(c.stackId),
-		}
+	params := &cloudformation.DescribeStackEventsInput{
+		StackName: aws.String(c.stackId),
+	}
 
+	for {
 		result, err := c.client.DescribeStackEvents(context.Background(), params)
 		if err != nil {
 			return err
@@ -308,4 +371,8 @@ func isTerminalStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+func errorIsDoesNotExist(err error) bool {
+	return strings.Contains(err.Error(), "does not exist")
 }
