@@ -31,6 +31,7 @@ func NewCmdFogMachine() *cobra.Command {
 
 	rootCmd.AddCommand(
 		ApplyCmd(),
+		DestroyCmd(),
 	)
 
 	return rootCmd
