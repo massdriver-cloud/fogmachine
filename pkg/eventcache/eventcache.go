@@ -1,10 +1,6 @@
 package eventcache
 
 import (
-	"context"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 )
 
@@ -24,29 +20,6 @@ func New() *EventCache {
 	return &EventCache{
 		Events: make(map[string]Event),
 	}
-}
-
-func (eventCache *EventCache) Prime(client *cloudformation.Client, stackName string) error {
-	params := &cloudformation.DescribeStackEventsInput{
-		StackName: aws.String(stackName),
-	}
-
-	result, err := client.DescribeStackEvents(context.Background(), params)
-	if err != nil {
-		return err
-	}
-
-	for _, event := range result.StackEvents {
-		e := Event{
-			ResourceName:       *event.LogicalResourceId,
-			ProviderResourceId: *event.PhysicalResourceId,
-			ResourceStatus:     string(event.ResourceStatus),
-		}
-
-		eventCache.Events[*event.EventId] = e
-	}
-
-	return nil
 }
 
 func (eventCache *EventCache) EventExists(eventId string) bool {
