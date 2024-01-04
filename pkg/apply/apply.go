@@ -54,7 +54,7 @@ func CfApply(cmd *cobra.Command, args []string) {
 		log.Fatal().Err(err).Msg("")
 	}
 
-	if err := client.CreateChangeset(template.Template, template.Parameters, ctx); err != nil {
+	if err := client.CreateChangeset(ctx, template.Template, template.Parameters); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
 

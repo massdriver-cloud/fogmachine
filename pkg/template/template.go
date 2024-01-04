@@ -39,10 +39,6 @@ func Read(input Input) (*Output, error) {
 	return output, nil
 }
 
-func readTemplate(filePath string) ([]byte, error) {
-	return os.ReadFile(filePath)
-}
-
 func readParameters(filePath string) ([]types.Parameter, error) {
 	parameters := []types.Parameter{}
 	rawParameters, err := os.ReadFile(filePath)

@@ -25,22 +25,18 @@ type Client struct {
 	timeout      time.Duration
 }
 
-type ChangesetCreator interface {
-	CreateChangeset(packageName string, template []byte, parameters []types.Parameter) (*cloudformation.CreateChangeSetOutput, error)
-}
-
-type ChangesetExecutor interface {
-	ExecuteChangeset(ctx context.Context) error
-}
-
-func NewCloudformationClient(ctx context.Context, packageName string, region string, t, pollInterval int) (*Client, error) {
+func NewCloudformationClient(ctx context.Context, packageName, region string, t, pollInterval int) (*Client, error) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
 
+	return NewCloudformationClientWithCFClient(ctx, packageName, region, t, pollInterval, cloudformation.NewFromConfig(cfg))
+}
+
+func NewCloudformationClientWithCFClient(ctx context.Context, packageName string, region string, t, pollInterval int, cfClient *cloudformation.Client) (*Client, error) {
 	return &Client{
-		client:       cloudformation.NewFromConfig(cfg),
+		client:       cfClient,
 		eventCache:   eventcache.New(),
 		stackId:      packageName,
 		pollIntervel: time.Duration(pollInterval) * time.Second,
@@ -48,7 +44,7 @@ func NewCloudformationClient(ctx context.Context, packageName string, region str
 	}, nil
 }
 
-func (c *Client) CreateChangeset(template []byte, parameters []types.Parameter, ctx context.Context) error {
+func (c *Client) CreateChangeset(ctx context.Context, template []byte, parameters []types.Parameter) error {
 	input := &cloudformation.CreateChangeSetInput{
 		ChangeSetName: aws.String(fmt.Sprintf("%s-%d", c.stackId, time.Now().Unix())),
 		ChangeSetType: types.ChangeSetTypeCreate,
