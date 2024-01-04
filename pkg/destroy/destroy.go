@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func Destroy(cmd *cobra.Command, args []string) {
+func Destroy(cmd *cobra.Command, _ []string) {
 	ctx := context.Background()
 	packageName, err := cmd.Flags().GetString("package-name")
 	if err != nil {
@@ -35,7 +35,7 @@ func Destroy(cmd *cobra.Command, args []string) {
 		log.Fatal().Err(err).Msg("")
 	}
 
-	if err := client.ExecuteDestroyStack(ctx); err != nil {
+	if err = client.ExecuteDestroyStack(ctx); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
 }

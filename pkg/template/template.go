@@ -46,15 +46,15 @@ func readParameters(filePath string) ([]types.Parameter, error) {
 		return parameters, err
 	}
 
-	rawJson := make(map[string]interface{})
-	err = json.Unmarshal(rawParameters, &rawJson)
+	rawJSON := make(map[string]interface{})
+	err = json.Unmarshal(rawParameters, &rawJSON)
 	if err != nil {
 		return parameters, err
 	}
 
 	flattenedParams := make(map[string]interface{})
 
-	flattenNestedParams("", rawJson, flattenedParams)
+	flattenNestedParams("", rawJSON, flattenedParams)
 
 	for key, value := range flattenedParams {
 		p := types.Parameter{ParameterKey: aws.String(key), ParameterValue: aws.String(value.(string))}

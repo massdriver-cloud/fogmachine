@@ -31,7 +31,7 @@ func TestCreate(t *testing.T) {
 
 	mockcf := cloudformation.NewFromConfig(cfg)
 
-	cf, err := client.NewCloudformationClientWithCFClient(context.Background(), "bar", "us-west-1", 5, 5, mockcf)
+	cf, err := client.NewCloudformationClientWithCFClient("bar", 5, 5, mockcf)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()

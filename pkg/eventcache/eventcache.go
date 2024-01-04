@@ -7,7 +7,7 @@ import (
 type Event struct {
 	ResourceName       string
 	ResourceStatus     string
-	ProviderResourceId string
+	ProviderResourceID string
 	Message            string
 	Type               string
 }
@@ -22,19 +22,19 @@ func New() *EventCache {
 	}
 }
 
-func (eventCache *EventCache) EventExists(eventId string) bool {
-	_, ok := eventCache.Events[eventId]
+func (eventCache *EventCache) EventExists(eventID string) bool {
+	_, ok := eventCache.Events[eventID]
 	return ok
 }
 
-func (eventCache *EventCache) AddEvent(eventId string, event Event) {
-	eventCache.Events[eventId] = event
+func (eventCache *EventCache) AddEvent(eventID string, event Event) {
+	eventCache.Events[eventID] = event
 }
 
 func (eventCache EventCache) EventFromStack(event types.StackEvent, eventType string) Event {
 	return Event{
 		ResourceName:       *event.LogicalResourceId,
-		ProviderResourceId: *event.PhysicalResourceId,
+		ProviderResourceID: *event.PhysicalResourceId,
 		ResourceStatus:     string(event.ResourceStatus),
 		Type:               eventType,
 	}
