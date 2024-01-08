@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func CfApply(cmd *cobra.Command, args []string) {
+func CfApply(cmd *cobra.Command, _ []string) {
 	ctx := context.Background()
 	packageName, err := cmd.Flags().GetString("package-name")
 	if err != nil {
@@ -54,11 +54,11 @@ func CfApply(cmd *cobra.Command, args []string) {
 		log.Fatal().Err(err).Msg("")
 	}
 
-	if err := client.CreateChangeset(ctx, template.Template, template.Parameters); err != nil {
+	if err = client.CreateChangeset(ctx, template.Template, template.Parameters); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
 
-	if err := client.ExecuteChangeSet(ctx); err != nil {
+	if err = client.ExecuteChangeSet(ctx); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
 }

@@ -32,6 +32,7 @@ func NewCmdFogMachine() *cobra.Command {
 	rootCmd.AddCommand(
 		ApplyCmd(),
 		DestroyCmd(),
+		VersionCmd(),
 	)
 
 	return rootCmd

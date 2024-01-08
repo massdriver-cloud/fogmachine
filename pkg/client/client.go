@@ -19,8 +19,8 @@ import (
 type Client struct {
 	client       *cloudformation.Client
 	eventCache   *eventcache.EventCache
-	stackId      string
-	changesetId  *string
+	stackID      string
+	changesetID  *string
 	pollIntervel time.Duration
 	timeout      time.Duration
 }
@@ -31,14 +31,14 @@ func NewCloudformationClient(ctx context.Context, packageName, region string, t,
 		return nil, err
 	}
 
-	return NewCloudformationClientWithCFClient(ctx, packageName, region, t, pollInterval, cloudformation.NewFromConfig(cfg))
+	return NewCloudformationClientWithCFClient(packageName, t, pollInterval, cloudformation.NewFromConfig(cfg))
 }
 
-func NewCloudformationClientWithCFClient(ctx context.Context, packageName string, region string, t, pollInterval int, cfClient *cloudformation.Client) (*Client, error) {
+func NewCloudformationClientWithCFClient(packageName string, t, pollInterval int, cfClient *cloudformation.Client) (*Client, error) {
 	return &Client{
 		client:       cfClient,
 		eventCache:   eventcache.New(),
-		stackId:      packageName,
+		stackID:      packageName,
 		pollIntervel: time.Duration(pollInterval) * time.Second,
 		timeout:      time.Duration(t) * time.Second,
 	}, nil
@@ -46,9 +46,9 @@ func NewCloudformationClientWithCFClient(ctx context.Context, packageName string
 
 func (c *Client) CreateChangeset(ctx context.Context, template []byte, parameters []types.Parameter) error {
 	input := &cloudformation.CreateChangeSetInput{
-		ChangeSetName: aws.String(fmt.Sprintf("%s-%d", c.stackId, time.Now().Unix())),
+		ChangeSetName: aws.String(fmt.Sprintf("%s-%d", c.stackID, time.Now().Unix())),
 		ChangeSetType: types.ChangeSetTypeCreate,
-		StackName:     aws.String(c.stackId),
+		StackName:     aws.String(c.stackID),
 		Description:   aws.String("Changeset created via Fog-Machine"),
 		TemplateBody:  aws.String(string(template)),
 		Parameters:    parameters,
@@ -61,7 +61,7 @@ func (c *Client) CreateChangeset(ctx context.Context, template []byte, parameter
 
 	if ok {
 		input.ChangeSetType = types.ChangeSetTypeUpdate
-		err = c.primeEventCache()
+		err = c.primeEventCache(ctx)
 		if err != nil {
 			return err
 		}
@@ -74,17 +74,17 @@ func (c *Client) CreateChangeset(ctx context.Context, template []byte, parameter
 		return err
 	}
 
-	c.changesetId = response.Id
+	c.changesetID = response.Id
 
 	return c.changeSetStatusWatcher(ctx)
 }
 
-func (c *Client) primeEventCache() error {
+func (c *Client) primeEventCache(ctx context.Context) error {
 	params := &cloudformation.DescribeStackEventsInput{
-		StackName: aws.String(c.stackId),
+		StackName: aws.String(c.stackID),
 	}
 
-	result, err := c.client.DescribeStackEvents(context.Background(), params)
+	result, err := c.client.DescribeStackEvents(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func (c *Client) primeEventCache() error {
 
 func (c Client) stackExists(ctx context.Context) (bool, error) {
 	params := cloudformation.DescribeStacksInput{
-		StackName: aws.String(c.stackId),
+		StackName: aws.String(c.stackID),
 	}
 
 	response, err := c.client.DescribeStacks(ctx, &params)
@@ -120,8 +120,8 @@ func (c Client) stackExists(ctx context.Context) (bool, error) {
 
 func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 	params := &cloudformation.DescribeChangeSetInput{
-		ChangeSetName: c.changesetId,
-		StackName:     aws.String(c.stackId),
+		ChangeSetName: c.changesetID,
+		StackName:     aws.String(c.stackID),
 	}
 
 	start := time.Now()
@@ -148,8 +148,8 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 			}
 
 			log.Info().
-				Str("changesetId", *c.changesetId).
-				Str("stackName", c.stackId).
+				Str("changesetId", *c.changesetID).
+				Str("stackName", c.stackID).
 				Str("status", status).
 				Str("phase", "Changeset").
 				Msg(message)
@@ -158,8 +158,8 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 
 		log.Info().
 			Str("Phase", "Changeset").
-			Str("ChangesetId", *c.changesetId).
-			Str("StackName", c.stackId).
+			Str("ChangesetId", *c.changesetID).
+			Str("StackName", c.stackID).
 			Str("Status", status).
 			Msg("")
 
@@ -172,14 +172,14 @@ func (c Client) changeSetStatusWatcher(ctx context.Context) error {
 		time.Sleep(c.pollIntervel)
 	}
 
-	return fmt.Errorf("Changeset failed to reach a terminal state")
+	return errors.New("changeset failed to reach a terminal state")
 }
 
 func (c Client) ExecuteChangeSet(ctx context.Context) error {
 	log.Info().Str("phase", "Execution").Msg("Validating changeset")
 	params := &cloudformation.DescribeChangeSetInput{
-		ChangeSetName: c.changesetId,
-		StackName:     aws.String(c.stackId),
+		ChangeSetName: c.changesetID,
+		StackName:     aws.String(c.stackID),
 	}
 
 	result, err := c.client.DescribeChangeSet(ctx, params)
@@ -195,8 +195,8 @@ func (c Client) ExecuteChangeSet(ctx context.Context) error {
 	log.Info().Str("phase", "Execution").Msg("Executing changeset")
 
 	input := &cloudformation.ExecuteChangeSetInput{
-		StackName:     aws.String(c.stackId),
-		ChangeSetName: c.changesetId,
+		StackName:     aws.String(c.stackID),
+		ChangeSetName: c.changesetID,
 	}
 
 	_, err = c.client.ExecuteChangeSet(ctx, input)
@@ -219,7 +219,7 @@ func (c Client) ExecuteDestroyStack(ctx context.Context) error {
 
 	log.Debug().Str("phase", "Execution").Msg("Priming cache")
 
-	err := c.primeEventCache()
+	err := c.primeEventCache(ctx)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (c Client) ExecuteDestroyStack(ctx context.Context) error {
 	log.Info().Str("phase", "Execution").Msg("Destroying stack")
 
 	input := &cloudformation.DeleteStackInput{
-		StackName: aws.String(c.stackId),
+		StackName: aws.String(c.stackID),
 	}
 
 	_, err = c.client.DeleteStack(ctx, input)
@@ -235,7 +235,7 @@ func (c Client) ExecuteDestroyStack(ctx context.Context) error {
 		return err
 	}
 
-	if err := c.runWatchers(ctx); err != nil {
+	if err = c.runWatchers(ctx); err != nil {
 		// On destroy we will hit this error so we know the stack is gone, anything else should return
 		if !errorIsDoesNotExist(err) {
 			return err
@@ -273,11 +273,11 @@ func (c Client) stackStatusWatcher(ctx context.Context, cancel context.CancelFun
 	defer cancel()
 
 	params := &cloudformation.DescribeStacksInput{
-		StackName: aws.String(c.stackId),
+		StackName: aws.String(c.stackID),
 	}
 
 	for {
-		result, err := c.client.DescribeStacks(context.Background(), params)
+		result, err := c.client.DescribeStacks(ctx, params)
 		if err != nil {
 			return err
 		}
@@ -288,7 +288,7 @@ func (c Client) stackStatusWatcher(ctx context.Context, cancel context.CancelFun
 			log.Info().
 				Str("phase", "Execution").
 				Str("event_type", "Deployment").
-				Str("provisioner_resource_id", c.stackId).
+				Str("provisioner_resource_id", c.stackID).
 				Str("provider_resource_id", "").
 				Str("status", string(stack.StackStatus)).
 				Msg("")
@@ -313,11 +313,11 @@ func (c *Client) changeSetExecutionStatusWatcher(ctx context.Context, cancel con
 	defer cancel()
 
 	params := &cloudformation.DescribeStackEventsInput{
-		StackName: aws.String(c.stackId),
+		StackName: aws.String(c.stackID),
 	}
 
 	for {
-		result, err := c.client.DescribeStackEvents(context.Background(), params)
+		result, err := c.client.DescribeStackEvents(ctx, params)
 		if err != nil {
 			return err
 		}
@@ -332,8 +332,8 @@ func (c *Client) changeSetExecutionStatusWatcher(ctx context.Context, cancel con
 					Str("phase", "Execution").
 					Str("event_type", e.Type).
 					Str("provisioner_resource_id", e.ResourceName).
-					Str("provider_resource_id", e.ProviderResourceId).
-					Str("status", string(e.ResourceStatus)).
+					Str("provider_resource_id", e.ProviderResourceID).
+					Str("status", e.ResourceStatus).
 					Msg("")
 			}
 		}
