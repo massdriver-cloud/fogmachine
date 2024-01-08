@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.37
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.34.5
 	github.com/aws/smithy-go v1.14.2
+	github.com/dramich/aws-mocker v0.1.0
 	github.com/rs/zerolog v1.30.0
 	github.com/spf13/cobra v1.7.0
 	golang.org/x/sync v0.5.0
@@ -28,5 +29,8 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/sys v0.11.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/tools v0.16.1 // indirect
 )
