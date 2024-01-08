@@ -16,6 +16,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+//go:generate go run ../../generate/main.go
+
 type Client struct {
 	client       *cloudformation.Client
 	eventCache   *eventcache.EventCache

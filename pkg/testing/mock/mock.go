@@ -4,6 +4,7 @@ package mock
 
 import (
 	"context"
+	"fmt"
 
 	awsmiddle "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
@@ -12,12 +13,12 @@ import (
 
 type CloudFormationMock struct {
 	callCount                      map[string]int
+	createChangeSetMockReturns     CreateChangeSetReturns
+	deleteStackMockReturns         DeleteStackReturns
+	describeChangeSetMockReturns   DescribeChangeSetReturns
+	describeStackEventsMockReturns DescribeStackEventsReturns
 	describeStacksMockReturns      DescribeStacksReturns
 	executeChangeSetMockReturns    ExecuteChangeSetReturns
-	deleteStackMockReturns         DeleteStackReturns
-	createChangeSetMockReturns     CreateChangeSetReturns
-	describeStackEventsMockReturns DescribeStackEventsReturns
-	describeChangeSetMockReturns   DescribeChangeSetReturns
 }
 
 func NewCloudFormationMock() *CloudFormationMock {
@@ -28,6 +29,58 @@ func NewCloudFormationMock() *CloudFormationMock {
 
 func (c *CloudFormationMock) GetCallCount() map[string]int {
 	return c.callCount
+}
+
+type CreateChangeSetReturns struct {
+	Return cloudformation.CreateChangeSetOutput
+	Error  error
+}
+
+func (c *CloudFormationMock) SetCreateChangeSetReturn(o cloudformation.CreateChangeSetOutput) {
+	c.createChangeSetMockReturns.Return = o
+}
+
+func (c *CloudFormationMock) SetCreateChangeSetError(e error) {
+	c.createChangeSetMockReturns.Error = e
+}
+
+type DeleteStackReturns struct {
+	Return cloudformation.DeleteStackOutput
+	Error  error
+}
+
+func (c *CloudFormationMock) SetDeleteStackReturn(o cloudformation.DeleteStackOutput) {
+	c.deleteStackMockReturns.Return = o
+}
+
+func (c *CloudFormationMock) SetDeleteStackError(e error) {
+	c.deleteStackMockReturns.Error = e
+}
+
+type DescribeChangeSetReturns struct {
+	Return cloudformation.DescribeChangeSetOutput
+	Error  error
+}
+
+func (c *CloudFormationMock) SetDescribeChangeSetReturn(o cloudformation.DescribeChangeSetOutput) {
+	c.describeChangeSetMockReturns.Return = o
+}
+
+func (c *CloudFormationMock) SetDescribeChangeSetError(e error) {
+	c.describeChangeSetMockReturns.Error = e
+}
+
+type DescribeStackEventsReturns struct {
+	Return cloudformation.DescribeStackEventsOutput
+	Error  error
+}
+
+func (c *CloudFormationMock) SetDescribeStackEventsReturn(o cloudformation.DescribeStackEventsOutput) {
+	c.describeStackEventsMockReturns.Return = o
+}
+
+func (c *CloudFormationMock) SetDescribeStackEventsError(e error) {
+	c.describeStackEventsMockReturns.Error = e
 }
 
 type DescribeStacksReturns struct {
@@ -56,58 +109,6 @@ func (c *CloudFormationMock) SetExecuteChangeSetError(e error) {
 	c.executeChangeSetMockReturns.Error = e
 }
 
-type DeleteStackReturns struct {
-	Return cloudformation.DeleteStackOutput
-	Error  error
-}
-
-func (c *CloudFormationMock) SetDeleteStackReturn(o cloudformation.DeleteStackOutput) {
-	c.deleteStackMockReturns.Return = o
-}
-
-func (c *CloudFormationMock) SetDeleteStackError(e error) {
-	c.deleteStackMockReturns.Error = e
-}
-
-type CreateChangeSetReturns struct {
-	Return cloudformation.CreateChangeSetOutput
-	Error  error
-}
-
-func (c *CloudFormationMock) SetCreateChangeSetReturn(o cloudformation.CreateChangeSetOutput) {
-	c.createChangeSetMockReturns.Return = o
-}
-
-func (c *CloudFormationMock) SetCreateChangeSetError(e error) {
-	c.createChangeSetMockReturns.Error = e
-}
-
-type DescribeStackEventsReturns struct {
-	Return cloudformation.DescribeStackEventsOutput
-	Error  error
-}
-
-func (c *CloudFormationMock) SetDescribeStackEventsReturn(o cloudformation.DescribeStackEventsOutput) {
-	c.describeStackEventsMockReturns.Return = o
-}
-
-func (c *CloudFormationMock) SetDescribeStackEventsError(e error) {
-	c.describeStackEventsMockReturns.Error = e
-}
-
-type DescribeChangeSetReturns struct {
-	Return cloudformation.DescribeChangeSetOutput
-	Error  error
-}
-
-func (c *CloudFormationMock) SetDescribeChangeSetReturn(o cloudformation.DescribeChangeSetOutput) {
-	c.describeChangeSetMockReturns.Return = o
-}
-
-func (c *CloudFormationMock) SetDescribeChangeSetError(e error) {
-	c.describeChangeSetMockReturns.Error = e
-}
-
 func (c *CloudFormationMock) CloudFormationMiddlewareInjector() func(stack *middleware.Stack) error {
 	return func(stack *middleware.Stack) error {
 		return stack.Finalize.Add(
@@ -115,6 +116,26 @@ func (c *CloudFormationMock) CloudFormationMiddlewareInjector() func(stack *midd
 				"CloudFormationMiddleware",
 				func(ctx context.Context, input middleware.FinalizeInput, handler middleware.FinalizeHandler) (middleware.FinalizeOutput, middleware.Metadata, error) {
 					switch awsmiddle.GetOperationName(ctx) {
+					case "CreateChangeSet":
+						c.callCount["CreateChangeSet"] += 1
+						return middleware.FinalizeOutput{
+							Result: &c.createChangeSetMockReturns.Return,
+						}, middleware.Metadata{}, c.createChangeSetMockReturns.Error
+					case "DeleteStack":
+						c.callCount["DeleteStack"] += 1
+						return middleware.FinalizeOutput{
+							Result: &c.deleteStackMockReturns.Return,
+						}, middleware.Metadata{}, c.deleteStackMockReturns.Error
+					case "DescribeChangeSet":
+						c.callCount["DescribeChangeSet"] += 1
+						return middleware.FinalizeOutput{
+							Result: &c.describeChangeSetMockReturns.Return,
+						}, middleware.Metadata{}, c.describeChangeSetMockReturns.Error
+					case "DescribeStackEvents":
+						c.callCount["DescribeStackEvents"] += 1
+						return middleware.FinalizeOutput{
+							Result: &c.describeStackEventsMockReturns.Return,
+						}, middleware.Metadata{}, c.describeStackEventsMockReturns.Error
 					case "DescribeStacks":
 						c.callCount["DescribeStacks"] += 1
 						return middleware.FinalizeOutput{
@@ -125,29 +146,9 @@ func (c *CloudFormationMock) CloudFormationMiddlewareInjector() func(stack *midd
 						return middleware.FinalizeOutput{
 							Result: &c.executeChangeSetMockReturns.Return,
 						}, middleware.Metadata{}, c.executeChangeSetMockReturns.Error
-					case "DeleteStack":
-						c.callCount["DeleteStack"] += 1
-						return middleware.FinalizeOutput{
-							Result: &c.deleteStackMockReturns.Return,
-						}, middleware.Metadata{}, c.deleteStackMockReturns.Error
-					case "CreateChangeSet":
-						c.callCount["CreateChangeSet"] += 1
-						return middleware.FinalizeOutput{
-							Result: &c.createChangeSetMockReturns.Return,
-						}, middleware.Metadata{}, c.createChangeSetMockReturns.Error
-					case "DescribeStackEvents":
-						c.callCount["DescribeStackEvents"] += 1
-						return middleware.FinalizeOutput{
-							Result: &c.describeStackEventsMockReturns.Return,
-						}, middleware.Metadata{}, c.describeStackEventsMockReturns.Error
-					case "DescribeChangeSet":
-						c.callCount["DescribeChangeSet"] += 1
-						return middleware.FinalizeOutput{
-							Result: &c.describeChangeSetMockReturns.Return,
-						}, middleware.Metadata{}, c.describeChangeSetMockReturns.Error
+					default:
+						panic(fmt.Sprintf("Operation is not mocked %s", awsmiddle.GetOperationName(ctx)))
 					}
-
-					return middleware.FinalizeOutput{}, middleware.Metadata{}, nil
 
 				},
 			),
